@@ -1,0 +1,6 @@
+CREATE_NOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS notes (
+    id SERIAL PRIMARY KEY,
+    text VARCHAR(255)
+);
+"""
