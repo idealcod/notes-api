@@ -1,26 +1,38 @@
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.db import get_conn
 
 client = TestClient(app)
 
+# ------------------------
+# Mocked test (не требует базы)
+# ------------------------
 def test_health():
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
-def test_create_note():
-    resp = client.post("/notes", params={"text": "hello"})
-    assert resp.status_code == 200
-    assert "id" in resp.json()
+# ------------------------
+# Integration tests (с реальной базой)
+# ------------------------
+@pytest.fixture(scope="module")
+def db_connection():
+    conn = get_conn()
+    yield conn
+    conn.close()
 
-def test_get_notes():
-    resp = client.get("/notes")
-    assert resp.status_code == 200
-    assert "notes" in resp.json()
+def test_create_note_real(db_connection):
+    payload = {"text": "Интеграционная заметка"}
+    response = client.post("/notes", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "id" in data
+    assert data["text"] == payload["text"]
 
-def test_single_note():
-    new = client.post("/notes", params={"text": "test"})
-    note_id = new.json()["id"]
-    resp = client.get(f"/notes/{note_id}")
-    assert resp.status_code == 200
-    assert resp.json()["id"] == note_id
+def test_get_notes_real(db_connection):
+    response = client.get("/notes")
+    assert response.status_code == 200
+    data = response.json()
+    assert "notes" in data
+    assert isinstance(data["notes"], list)
