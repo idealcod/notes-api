@@ -1,35 +1,37 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI
 from app.db import get_conn
+from app.models import CREATE_NOTES_TABLE
 
 app = FastAPI()
 
-class NoteCreate(BaseModel):
-    text: str
+# Создаём таблицу при старте
+conn = get_conn()
+cur = conn.cursor()
+cur.execute(CREATE_NOTES_TABLE)
+conn.commit()
+cur.close()
+conn.close()
 
 @app.get("/health")
-def healthcheck():
+def health():
     return {"status": "ok"}
 
 @app.post("/notes")
-def create_note(note: NoteCreate):
+def create_note(text: str):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO notes (text) VALUES (%s) RETURNING id, text;",
-        (note.text,)
-    )
-    result = cur.fetchone()
+    cur.execute("INSERT INTO notes(text) VALUES (%s) RETURNING id", (text,))
+    note_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
     conn.close()
-    return {"id": result[0], "text": result[1]}
+    return {"id": note_id, "text": text}
 
 @app.get("/notes")
 def get_notes():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id, text FROM notes;")
+    cur.execute("SELECT id, text FROM notes")
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -39,42 +41,10 @@ def get_notes():
 def get_note(note_id: int):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id, text FROM notes WHERE id = %s;", (note_id,))
+    cur.execute("SELECT id, text FROM notes WHERE id=%s", (note_id,))
     row = cur.fetchone()
     cur.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    return {"id": row[0], "text": row[1]}
-
-@app.put("/notes/{note_id}")
-def update_note(note_id: int, note: NoteCreate):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE notes SET text = %s WHERE id = %s RETURNING id, text;",
-        (note.text, note_id)
-    )
-    row = cur.fetchone()
-    conn.commit()
-    cur.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    return {"id": row[0], "text": row[1]}
-
-@app.delete("/notes/{note_id}")
-def delete_note(note_id: int):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM notes WHERE id = %s RETURNING id;", (note_id,))
-    row = cur.fetchone()
-    conn.commit()
-    cur.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    return {"status": "deleted", "id": note_id}
+    conn.close()
+    if row:
+        return {"id": row[0], "text": row[1]}
+    return {"error": "Not found"}
